@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Student {
+  id        Int      @id @default(autoincrement())
+  regNo     String   @unique @map("reg_no") @db.VarChar(50)
+  name      String   @db.VarChar(100)
+  fName     String   @map("f_name") @db.VarChar(100)
+  phone     String   @db.VarChar(20)
+  email     String?  @db.VarChar(100)
+  address   String?  @db.Text
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  enrollments   Enrollment[]
+  batchStudents BatchStudent[]
+  payments      Payment[]
+
+  @@map("students")
+}
+
+model Course {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(150)
+  totalFee    Decimal  @map("total_fee") @db.Decimal(10, 2)
+  duration    String?  @db.VarChar(50)
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  batches     Batch[]
+  enrollments Enrollment[]
+
+  @@map("courses")
+}
+
+model Batch {
+  id          Int         @id @default(autoincrement())
+  courseId    Int         @map("course_id")
+  batchName   String      @map("batch_name") @db.VarChar(100)
+  batchCode   String?     @unique @map("batch_code") @db.VarChar(50)
+  startTime   String      @map("start_time") @db.VarChar(20)
+  endTime     String      @map("end_time") @db.VarChar(20)
+  days        String      @default("Mon-Fri") @db.VarChar(100)
+  startDate   DateTime?   @map("start_date") @db.Date
+  endDate     DateTime?   @map("end_date") @db.Date
+  maxStudents Int         @default(30) @map("max_students")
+  status      BatchStatus @default(UPCOMING)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  course        Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  batchStudents BatchStudent[]
+  enrollments   Enrollment[]
+
+  @@index([courseId])
+  @@map("batches")
+}
+
+enum BatchStatus {
+  UPCOMING
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+model BatchStudent {
+  id         Int                @id @default(autoincrement())
+  batchId    Int                @map("batch_id")
+  studentId  Int                @map("student_id")
+  joinedDate DateTime           @default(now()) @map("joined_date")
+  status     BatchStudentStatus @default(ACTIVE)
+  createdAt  DateTime           @default(now()) @map("created_at")
+
+  batch   Batch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, studentId])
+  @@index([studentId])
+  @@map("batch_students")
+}
+
+enum BatchStudentStatus {
+  ACTIVE
+  COMPLETED
+  DROPPED
+  TRANSFERRED
+}
+
+model Enrollment {
+  id           Int      @id @default(autoincrement())
+  studentId    Int      @map("student_id")
+  courseId     Int      @map("course_id")
+  batchId      Int?     @map("batch_id")
+  timings      String?  @db.VarChar(100)
+  courseFee    Decimal  @map("course_fee") @db.Decimal(10, 2)
+  enrolledDate DateTime @default(now()) @map("enrolled_date")
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  batch   Batch?  @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@index([courseId])
+  @@index([batchId])
+  @@map("enrollments")
+}
+
+model Payment {
+  id          Int      @id @default(autoincrement())
+  studentId   Int      @map("student_id")
+  totalFee    Decimal  @map("total_fee") @db.Decimal(10, 2)
+  discount    Decimal  @default(0.00) @db.Decimal(10, 2)
+  finalFee    Decimal  @map("final_fee") @db.Decimal(10, 2)
+  totalPaid   Decimal  @default(0.00) @map("total_paid") @db.Decimal(10, 2)
+  balance     Decimal  @map("balance") @db.Decimal(10, 2)
+  paymentMode String?  @map("payment_mode") @db.VarChar(50)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  student Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  history PaymentHistory[]
+
+  @@index([studentId])
+  @@map("payments")
+}
+
+model PaymentHistory {
+  id            Int      @id @default(autoincrement())
+  paymentId     Int      @map("payment_id")
+  amountPaid    Decimal  @map("amount_paid") @db.Decimal(10, 2)
+  paymentMethod String   @map("payment_method") @db.VarChar(50)
+  paymentDate   DateTime @default(now()) @map("payment_date")
+  receiptNo     String?  @unique @map("receipt_no") @db.VarChar(50)
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@map("payment_history")
+}
