@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import axios from 'axios'
+import { toast } from 'sonner'
 import {
   Table,
   TableBody,
@@ -11,9 +12,30 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { BookOpen, Plus, Search, Users, RefreshCw, Loader2, Clock, DollarSign } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  BookOpen,
+  Plus,
+  Search,
+  Users,
+  RefreshCw,
+  Loader2,
+  Clock,
+  Edit3,
+  Trash2,
+  AlertCircle,
+} from 'lucide-react'
 
 import AddCourseModal from '@/components/modals/AddCourseModal'
+import EditCourseModal from '@/components/modals/EditCourseModal'
+
 const API_BASE = import.meta.env.VITE_API_URL
 
 export default function Courses() {
@@ -22,6 +44,15 @@ export default function Courses() {
   const [search, setSearch] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [openModal, setOpenModal] = useState(false)
+
+  // Edit Course Modal State
+  const [openEditModal, setOpenEditModal] = useState(false)
+  const [courseToEdit, setCourseToEdit] = useState(null)
+
+  // Delete Course Confirmation Dialog State
+  const [courseToDelete, setCourseToDelete] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+
   const dropdownRef = useRef(null)
 
   // Fetch all courses from backend
@@ -73,6 +104,23 @@ export default function Courses() {
   const handleSelectCourse = (courseName) => {
     setSearch(courseName)
     setIsOpen(false)
+  }
+
+  // Handle Delete Course
+  const handleDeleteCourse = async () => {
+    if (!courseToDelete) return
+    setDeleting(true)
+    try {
+      const res = await axios.delete(`${API_BASE}/course/${courseToDelete.id}`)
+      toast.success(res.data?.message || `Course "${courseToDelete.name}" deleted successfully`)
+      setCourseToDelete(null)
+      await fetchCourses()
+    } catch (err) {
+      console.error('Failed to delete course:', err)
+      toast.error(err?.response?.data?.message || 'Failed to delete course')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -129,7 +177,7 @@ export default function Courses() {
                       </div>
                       {c.total_fee !== undefined && (
                         <span className="font-mono text-xs text-muted-foreground font-semibold">
-                          ₹{c.total_fee}
+                          ₹{Number(c.total_fee).toLocaleString('en-IN')}
                         </span>
                       )}
                     </div>
@@ -157,7 +205,7 @@ export default function Courses() {
 
             <Button
               size="sm"
-              className="h-9 gap-1.5 bg-primary hover:bg-[#1f6feb] text-primary-foreground font-medium shadow-xs"
+              className="h-9 gap-1.5 bg-primary hover:bg-[#1f6feb] text-primary-foreground font-medium shadow-xs cursor-pointer"
               onClick={() => setOpenModal(true)}
             >
               <Plus size={15} />
@@ -176,13 +224,14 @@ export default function Courses() {
                 <TableHead className="text-muted-foreground text-xs font-semibold">Total Fee</TableHead>
                 <TableHead className="text-muted-foreground text-xs font-semibold">Batches</TableHead>
                 <TableHead className="text-muted-foreground text-xs font-semibold">Description</TableHead>
-                <TableHead className="text-right text-muted-foreground text-xs font-semibold">Status</TableHead>
+                <TableHead className="text-muted-foreground text-xs font-semibold">Status</TableHead>
+                <TableHead className="text-right text-muted-foreground text-xs font-semibold w-24">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && courses.length === 0 ? (
                 <TableRow className="border-border">
-                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <Loader2 size={18} className="animate-spin text-primary" />
                       <span className="text-xs">Loading course directory...</span>
@@ -191,7 +240,7 @@ export default function Courses() {
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow className="border-border">
-                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <BookOpen size={22} className="text-muted-foreground/60" />
                       <span className="text-sm font-medium text-foreground">No courses found</span>
@@ -212,14 +261,16 @@ export default function Courses() {
                         <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-primary border border-border">
                           <BookOpen size={14} />
                         </div>
-                        <span>{course.name}</span>
+                        <span className="font-semibold">{course.name}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
                       {course.duration || '-'}
                     </TableCell>
-                    <TableCell className="font-mono text-xs font-medium text-foreground">
-                      {course.total_fee !== undefined ? `₹${course.total_fee}` : '-'}
+                    <TableCell className="font-mono text-xs font-semibold text-foreground">
+                      {course.total_fee !== undefined
+                        ? `₹${Number(course.total_fee).toLocaleString('en-IN')}`
+                        : '-'}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
                       <div className="flex items-center gap-1.5">
@@ -230,8 +281,37 @@ export default function Courses() {
                     <TableCell className="text-muted-foreground text-xs max-w-[200px] truncate">
                       {course.description || '-'}
                     </TableCell>
+                    <TableCell>
+                      {course.is_active !== false ? (
+                        <Badge variant="success">Active</Badge>
+                      ) : (
+                        <Badge variant="secondary">Inactive</Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
-                      <Badge variant="success">Active</Badge>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setCourseToEdit(course)
+                            setOpenEditModal(true)
+                          }}
+                          className="size-7 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                          title="Edit Course"
+                        >
+                          <Edit3 size={13} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setCourseToDelete(course)}
+                          className="size-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                          title="Delete Course"
+                        >
+                          <Trash2 size={13} />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -247,8 +327,85 @@ export default function Courses() {
           )}
         </div>
       </div>
+
+      {/* Add Course Modal */}
       <AddCourseModal open={openModal} onOpenChange={setOpenModal} onSuccess={fetchCourses} />
 
+      {/* Edit Course Modal */}
+      <EditCourseModal
+        open={openEditModal}
+        onOpenChange={setOpenEditModal}
+        course={courseToEdit}
+        onSuccess={fetchCourses}
+      />
+
+      {/* Delete Course Confirmation Dialog */}
+      <Dialog open={!!courseToDelete} onOpenChange={(open) => !open && setCourseToDelete(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold text-destructive">
+              <AlertCircle className="size-5" />
+              Delete Course
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              This action will permanently delete this course from the catalog.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-sm text-foreground">
+            <p className="leading-relaxed">
+              Are you sure you want to permanently delete{' '}
+              <span className="font-semibold text-foreground">
+                "{courseToDelete?.name}"
+              </span>{' '}
+              <span className="font-mono text-muted-foreground">
+                (ID #{courseToDelete?.id})
+              </span>?
+            </p>
+            {courseToDelete?.batches?.length > 0 && (
+              <div className="p-3 rounded-lg border border-destructive/20 bg-destructive/10 text-destructive text-xs leading-relaxed space-y-1">
+                <p className="font-semibold">⚠️ Notice:</p>
+                <p>
+                  This course currently has {courseToDelete.batches.length}{' '}
+                  {courseToDelete.batches.length === 1 ? 'batch' : 'batches'} associated with it. Deleting it will also remove those batches and unenroll students.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex-row items-center justify-end gap-2 sm:justify-end pt-2 border-t border-border/60">
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              disabled={deleting}
+              onClick={() => setCourseToDelete(null)}
+              className="h-9 px-4"
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              type="button"
+              disabled={deleting}
+              onClick={handleDeleteCourse}
+              className="h-9 px-4 gap-1.5 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium shadow-xs cursor-pointer"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 size={14} />
+                  Yes, Delete Course
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
