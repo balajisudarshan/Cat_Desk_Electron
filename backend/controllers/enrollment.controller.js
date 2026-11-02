@@ -58,7 +58,7 @@ const addEnrollment = async (req, res) => {
     }
 
     const insertedCourse = [];
-    let total_fee = 0;
+    let newCourseFeeTotal = 0;
 
     for (let rawCourseId of course_ids) {
       const courseId = parseInt(rawCourseId);
@@ -79,7 +79,7 @@ const addEnrollment = async (req, res) => {
       if (existingEnrollment) continue;
 
       const course_fee = Number(course.totalFee);
-      total_fee += course_fee;
+      newCourseFeeTotal += course_fee;
 
       await prisma.enrollment.create({
         data: {
@@ -94,21 +94,52 @@ const addEnrollment = async (req, res) => {
       insertedCourse.push(courseId);
     }
 
-    const dis = Number(discount || 0);
-    const final_fee = total_fee - dis;
-    const balance = final_fee - paid;
+    // If no new courses were actually enrolled (all duplicates), stop here
+    if (insertedCourse.length === 0) {
+      return res.status(400).json({
+        message: "Student is already enrolled in the selected course(s)",
+      });
+    }
 
-    const payment = await prisma.payment.create({
-      data: {
-        studentId: student.id,
-        totalFee: total_fee,
-        discount: dis,
-        finalFee: final_fee,
-        totalPaid: paid,
-        balance: balance,
-        paymentMode: payment_mode || "Cash",
-      },
+    const dis = Number(discount || 0);
+    const newFinalFee = newCourseFeeTotal - dis;
+    const newBalance = newFinalFee - paid;
+
+    // Check if the student already has an existing payment record
+    const existingPayment = await prisma.payment.findFirst({
+      where: { studentId: student.id },
+      orderBy: { id: "asc" },
     });
+
+    let payment;
+
+    if (existingPayment) {
+      // Update the existing payment record by adding new course fees
+      payment = await prisma.payment.update({
+        where: { id: existingPayment.id },
+        data: {
+          totalFee: { increment: newCourseFeeTotal },
+          discount: { increment: dis },
+          finalFee: { increment: newFinalFee },
+          totalPaid: { increment: paid },
+          balance: { increment: newBalance },
+          paymentMode: payment_mode || existingPayment.paymentMode || "Cash",
+        },
+      });
+    } else {
+      // Create a new payment record for the first enrollment
+      payment = await prisma.payment.create({
+        data: {
+          studentId: student.id,
+          totalFee: newCourseFeeTotal,
+          discount: dis,
+          finalFee: newFinalFee,
+          totalPaid: paid,
+          balance: newBalance,
+          paymentMode: payment_mode || "Cash",
+        },
+      });
+    }
 
     if (paid > 0) {
       await prisma.paymentHistory.create({
@@ -162,7 +193,7 @@ const getStudentEnrollment = async (req, res) => {
       course_name: e.course.name,
       batch_name: e.batch?.batchName || null,
       timings: e.timings || (e.batch ? `${e.batch.startTime} - ${e.batch.endTime}` : "N/A"),
-      course_fee: e.courseFee,
+      course_fee: Number(e.courseFee),
     }));
 
     return res.json(rows);

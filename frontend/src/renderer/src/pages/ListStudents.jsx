@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom'
 import {
   Table,
   TableBody,
-  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -13,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Search, Plus, RefreshCw, UserCheck, Users, Mail, Phone } from 'lucide-react'
+import { Search, Plus, RefreshCw, Users, Mail, Phone } from 'lucide-react'
 
 const ListStudents = () => {
   const API_BASE = import.meta.env.VITE_API_URL
@@ -58,32 +57,44 @@ const ListStudents = () => {
   const formatDate = (dateString) => {
     if (!dateString) return '-'
     const d = new Date(dateString)
-    return isNaN(d.getTime()) ? dateString : d.toLocaleDateString()
+    return d.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    })
   }
 
   return (
-    <div className="space-y-5">
-      {/* Search Bar & Action Controls */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
-          <Input
-            placeholder="Search by name, reg no, phone..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-9 rounded-md border-border bg-background text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary/40 text-sm"
-          />
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Students Directory</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Manage student registrations, academic batch assignments, and fee status.
+          </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          {/* Search bar */}
+          <div className="relative flex-1 sm:w-64">
+            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search by name, phone, reg no..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-9 text-xs bg-background border-border"
+            />
+          </div>
+
           <Button
             variant="outline"
             size="sm"
             onClick={getAllStudents}
-            disabled={loading}
-            className="h-9 gap-1.5 border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+            className="h-9 gap-1 text-xs border-border bg-secondary hover:bg-secondary/80"
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             Refresh
           </Button>
 

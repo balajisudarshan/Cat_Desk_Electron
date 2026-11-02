@@ -56,6 +56,7 @@ import {
   Loader2,
   Download,
   Printer,
+  Edit3,
 } from 'lucide-react'
 
 export default function ViewStudent() {
@@ -86,6 +87,31 @@ export default function ViewStudent() {
   const [payAmount, setPayAmount] = useState('')
   const [payMethod, setPayMethod] = useState('upi')
   const [submittingPayment, setSubmittingPayment] = useState(false)
+  const [confirmPayOpen, setConfirmPayOpen] = useState(false)
+
+  // Enrollment Confirmation Modal States
+  const [confirmEnrollOpen, setConfirmEnrollOpen] = useState(false)
+
+  // Edit Student Modal States
+  const [editStudentModalOpen, setEditStudentModalOpen] = useState(false)
+  const [savingStudent, setSavingStudent] = useState(false)
+  const [editStudentForm, setEditStudentForm] = useState({
+    name: '',
+    f_name: '',
+    phone: '',
+    email: '',
+    address: '',
+    status: true,
+  })
+
+  // Edit Payment Transaction Modal States
+  const [editPaymentModalOpen, setEditPaymentModalOpen] = useState(false)
+  const [savingPayment, setSavingPayment] = useState(false)
+  const [paymentToEdit, setPaymentToEdit] = useState(null)
+  const [editPaymentForm, setEditPaymentForm] = useState({
+    amount_paid: '',
+    payment_method: 'upi',
+  })
 
   // Receipt Modal States
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
@@ -201,8 +227,8 @@ export default function ViewStudent() {
     return name.toLowerCase().includes(courseName.trim().toLowerCase())
   })
 
-  // Submit enrollment for new course
-  const handleEnrollNewCourse = async (e) => {
+  // Validate and show confirmation modal before enrolling
+  const handleEnrollNewCourse = (e) => {
     e.preventDefault()
 
     if (!data?.student?.reg_no) {
@@ -219,18 +245,24 @@ export default function ViewStudent() {
       ? newFinalAmount
       : Number(amountPaid) || 0
 
-    if (paymentMode === 'installment') {
-      if (paid <= 0) {
-        toast.error('Please enter an initial payment amount greater than ₹0')
-        return
-      }
-      if (paid > newFinalAmount) {
-        toast.error(`Initial payment cannot exceed the total payable amount of ₹${newFinalAmount}`)
-        return
-      }
+    if (paymentMode === 'installment' && paid > newFinalAmount) {
+      toast.error(`Initial payment cannot exceed the total payable amount of ₹${newFinalAmount}`)
+      return
     }
 
+    // Show confirmation modal instead of directly submitting
+    setConfirmEnrollOpen(true)
+  }
+
+  // Actually submit enrollment after user confirms
+  const confirmAndEnroll = async () => {
+    setConfirmEnrollOpen(false)
     setEnrolling(true)
+
+    const paid = paymentMode === 'full-payment'
+      ? newFinalAmount
+      : Number(amountPaid) || 0
+
     const enrollmentData = {
       reg_no: data.student.reg_no,
       course_ids: selectedCourses.map((c) => c.id),
@@ -259,8 +291,8 @@ export default function ViewStudent() {
     }
   }
 
-  // Submit recorded payment (Add Payment Accordion)
-  const handleRecordPayment = async (e) => {
+  // Validate and open payment confirmation modal
+  const handleRecordPayment = (e) => {
     e.preventDefault()
 
     const num = Number(payAmount)
@@ -273,6 +305,14 @@ export default function ViewStudent() {
       toast.error(`Payment amount cannot exceed the pending balance of ₹${Number(balance).toLocaleString('en-IN')}`)
       return
     }
+
+    setConfirmPayOpen(true)
+  }
+
+  // Execute recorded payment after confirmation
+  const confirmAndRecordPayment = async () => {
+    setConfirmPayOpen(false)
+    const num = Number(payAmount)
 
     setSubmittingPayment(true)
     try {
@@ -291,6 +331,77 @@ export default function ViewStudent() {
       toast.error(err?.response?.data?.message || 'Failed to record payment')
     } finally {
       setSubmittingPayment(false)
+    }
+  }
+
+  // Edit Student Modal Handlers
+  const openEditStudentModal = () => {
+    if (!data?.student) return
+    setEditStudentForm({
+      name: data.student.name || '',
+      f_name: data.student.f_name || data.student.fName || '',
+      phone: data.student.phone || '',
+      email: data.student.email || '',
+      address: data.student.address || '',
+      status: data.student.status !== false,
+    })
+    setEditStudentModalOpen(true)
+  }
+
+  const handleUpdateStudent = async (e) => {
+    e.preventDefault()
+    if (!editStudentForm.name.trim() || !editStudentForm.phone.trim() || !editStudentForm.f_name.trim()) {
+      toast.error('Name, Father Name, and Phone are required')
+      return
+    }
+
+    setSavingStudent(true)
+    try {
+      const res = await axios.put(`${API_BASE}/student/${data.student.id}`, editStudentForm)
+      toast.success(res.data?.message || 'Student details updated successfully!')
+      setEditStudentModalOpen(false)
+      await fetchStudentHistory()
+    } catch (err) {
+      console.error('Error updating student:', err)
+      toast.error(err?.response?.data?.message || 'Failed to update student details')
+    } finally {
+      setSavingStudent(false)
+    }
+  }
+
+  // Edit Payment Transaction Modal Handlers
+  const openEditPaymentModal = (item) => {
+    setPaymentToEdit(item)
+    setEditPaymentForm({
+      amount_paid: String(item.amount_paid || 0),
+      payment_method: item.payment_method?.toLowerCase() || 'upi',
+    })
+    setEditPaymentModalOpen(true)
+  }
+
+  const handleUpdatePayment = async (e) => {
+    e.preventDefault()
+    const num = Number(editPaymentForm.amount_paid)
+    if (isNaN(num) || num < 0) {
+      toast.error('Please enter a valid amount (0 or greater)')
+      return
+    }
+
+    setSavingPayment(true)
+    try {
+      const res = await axios.put(`${API_BASE}/payment/history/${paymentToEdit.id}`, {
+        amount_paid: num,
+        payment_method: editPaymentForm.payment_method,
+      })
+      toast.success(res.data?.message || 'Payment transaction updated successfully!')
+      setEditPaymentModalOpen(false)
+      setPaymentToEdit(null)
+      await fetchStudentHistory()
+    } catch (err) {
+      console.error('Error updating payment transaction:', err)
+      toast.error(err?.response?.data?.message || 'Failed to update payment transaction')
+    } finally {
+      setSavingPayment(false)
     }
   }
 
@@ -419,21 +530,17 @@ export default function ViewStudent() {
 
   const { student, enrollments = [], payments = [], paymentHistory = [] } = data
 
-  // Financial calculations from payments or fallback to enrollments
-  const latestPayment = payments[0] || null
-  const totalFee =
-    latestPayment?.total_fee ??
+  // Financial calculations: aggregate across ALL payment records
+  const totalFee = payments.reduce((sum, p) => sum + (Number(p.total_fee) || 0), 0) ||
     enrollments.reduce((sum, e) => sum + (Number(e.course_fee) || 0), 0)
-  const discountAmount = latestPayment?.discount ?? 0
-  const finalFee = latestPayment?.final_fee ?? Math.max(0, totalFee - discountAmount)
-  const totalPaid =
-    latestPayment?.total_paid ??
+  const discountAmount = payments.reduce((sum, p) => sum + (Number(p.discount) || 0), 0)
+  const finalFee = payments.reduce((sum, p) => sum + (Number(p.final_fee) || 0), 0) ||
+    Math.max(0, totalFee - discountAmount)
+  const totalPaid = payments.reduce((sum, p) => sum + (Number(p.total_paid) || 0), 0) ||
     paymentHistory.reduce((sum, h) => sum + (Number(h.amount_paid) || 0), 0)
-  const balance =
-    latestPayment?.balance !== undefined
-      ? Number(latestPayment.balance)
-      : Math.max(0, finalFee - totalPaid)
-  const currentPaymentMode = latestPayment?.payment_mode || 'N/A'
+  const balance = payments.reduce((sum, p) => sum + (Number(p.balance) || 0), 0) ||
+    Math.max(0, finalFee - totalPaid)
+  const currentPaymentMode = payments[0]?.payment_mode || 'N/A'
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-12">
@@ -470,6 +577,17 @@ export default function ViewStudent() {
           >
             <Receipt size={13} />
             Generate Receipt
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={openEditStudentModal}
+            className="h-8 gap-1.5 text-xs text-foreground border-border bg-secondary hover:bg-secondary/80 transition-colors cursor-pointer"
+          >
+            <Edit3 size={13} />
+            Edit Student
           </Button>
         </div>
       </div>
@@ -763,13 +881,13 @@ export default function ViewStudent() {
                       {paymentMode === 'installment' && (
                         <div className="space-y-1 pt-3">
                           <Label htmlFor="view-amountPaid" className="text-xs font-medium text-foreground">
-                            Initial Amount Paid (₹)
+                            Initial Amount Paid (₹) — enter 0 to pay later
                           </Label>
                           <Input
                             id="view-amountPaid"
                             name="amountPaid"
                             type="number"
-                            min="1"
+                            min="0"
                             max={newFinalAmount}
                             placeholder="Enter paid amount"
                             value={amountPaid}
@@ -873,13 +991,13 @@ export default function ViewStudent() {
                     <h3 className="font-semibold text-primary text-base">
                       Final Amount : ₹{newFinalAmount.toLocaleString('en-IN')}
                     </h3>
-                    {paymentMode === 'installment' && Number(amountPaid) > 0 && (
+                    {paymentMode === 'installment' && (
                       <>
                         <h4 className="font-medium text-emerald-600 text-xs">
-                          Paid Now : ₹{Number(amountPaid).toLocaleString('en-IN')}
+                          Paid Now : {Number(amountPaid) > 0 ? `₹${Number(amountPaid).toLocaleString('en-IN')}` : '₹0 (Pay Later)'}
                         </h4>
                         <h4 className="font-medium text-amber-600 text-xs">
-                          Remaining Due : ₹{Math.max(0, newFinalAmount - Number(amountPaid)).toLocaleString('en-IN')}
+                          Remaining Due : ₹{Math.max(0, newFinalAmount - Number(amountPaid || 0)).toLocaleString('en-IN')}
                         </h4>
                       </>
                     )}
@@ -1180,6 +1298,7 @@ export default function ViewStudent() {
                     <TableHead className="text-xs font-semibold text-muted-foreground">Date</TableHead>
                     <TableHead className="text-xs font-semibold text-muted-foreground">Method</TableHead>
                     <TableHead className="text-right text-xs font-semibold text-muted-foreground">Amount</TableHead>
+                    <TableHead className="text-right text-xs font-semibold text-muted-foreground w-12">Edit</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1208,6 +1327,18 @@ export default function ViewStudent() {
                       <TableCell className="text-right font-mono font-semibold text-xs text-emerald-600 dark:text-emerald-500">
                         +₹{Number(item.amount_paid || 0).toLocaleString('en-IN')}
                       </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditPaymentModal(item)}
+                          className="size-7 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                          title="Edit Payment Transaction"
+                        >
+                          <Edit3 size={13} />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1216,6 +1347,461 @@ export default function ViewStudent() {
           </CardContent>
         </Card>
       </div>
+
+      {/* --- Enrollment Confirmation Modal --- */}
+      <Dialog open={confirmEnrollOpen} onOpenChange={setConfirmEnrollOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+              <BookOpen className="text-primary size-5" />
+              Confirm Enrollment
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Please review the details below before proceeding.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <p className="text-sm leading-relaxed text-foreground">
+              You are enrolling{' '}
+              <span className="font-semibold text-primary">{student.name}</span>{' '}
+              <span className="text-muted-foreground">({student.reg_no})</span> in{' '}
+              <span className="font-semibold">
+                {selectedCourses.map((c) => c.name).join(', ')}
+              </span>
+              . The total course fee is{' '}
+              <span className="font-semibold">₹{newTotalFee.toLocaleString('en-IN')}</span>
+              {numericDiscount > 0 && (
+                <>
+                  {' '}with a discount of{' '}
+                  <span className="font-semibold text-emerald-600">
+                    ₹{numericDiscount.toLocaleString('en-IN')}
+                  </span>
+                </>
+              )}
+              . The final payable amount is{' '}
+              <span className="font-bold text-primary">
+                ₹{newFinalAmount.toLocaleString('en-IN')}
+              </span>
+              .
+            </p>
+
+            {(() => {
+              const paid = paymentMode === 'full-payment' ? newFinalAmount : Number(amountPaid) || 0
+              const remaining = Math.max(0, newFinalAmount - paid)
+              return (
+                <p className="text-sm leading-relaxed text-foreground">
+                  {paid > 0 ? (
+                    <>
+                      <span className="font-semibold text-primary">{student.name}</span> will pay{' '}
+                      <span className="font-bold text-emerald-600">
+                        ₹{paid.toLocaleString('en-IN')}
+                      </span>{' '}
+                      now via{' '}
+                      <span className="font-semibold uppercase">{paymentType}</span>
+                      {paymentMode === 'full-payment' ? (
+                        <span className="text-emerald-600 font-medium"> (Full Payment)</span>
+                      ) : (
+                        <>
+                          <span className="text-muted-foreground"> (Installment)</span>, with a remaining
+                          balance of{' '}
+                          <span className="font-bold text-amber-600">
+                            ₹{remaining.toLocaleString('en-IN')}
+                          </span>
+                        </>
+                      )}
+                      .
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-semibold text-primary">{student.name}</span> will{' '}
+                      <span className="font-semibold text-amber-600">pay later</span>. The full amount of{' '}
+                      <span className="font-bold text-amber-600">
+                        ₹{newFinalAmount.toLocaleString('en-IN')}
+                      </span>{' '}
+                      will be recorded as an outstanding balance.
+                    </>
+                  )}
+                </p>
+              )
+            })()}
+
+            {/* Existing payment context */}
+            {payments.length > 0 && (
+              <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-1">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                  Current Payment Summary
+                </p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <span className="text-muted-foreground">Existing Total Fee:</span>
+                  <span className="font-semibold text-foreground text-right">
+                    ₹{Number(totalFee).toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-muted-foreground">Already Paid:</span>
+                  <span className="font-semibold text-emerald-600 text-right">
+                    ₹{Number(totalPaid).toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-muted-foreground">Current Balance:</span>
+                  <span className="font-semibold text-amber-600 text-right">
+                    ₹{Number(balance).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex-row items-center justify-end gap-2 sm:justify-end pt-2 border-t border-border/60">
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={() => setConfirmEnrollOpen(false)}
+              className="h-9 px-4"
+            >
+              No, Cancel
+            </Button>
+            <Button
+              size="sm"
+              type="button"
+              onClick={confirmAndEnroll}
+              disabled={enrolling}
+              className="h-9 px-5 gap-1.5 bg-primary hover:bg-[#1f6feb] text-primary-foreground font-medium shadow-xs cursor-pointer"
+            >
+              {enrolling ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Enrolling...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={14} />
+                  Yes, Confirm & Enroll
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- Payment Confirmation Modal --- */}
+      <Dialog open={confirmPayOpen} onOpenChange={setConfirmPayOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+              <CreditCard className="text-emerald-600 size-5" />
+              Confirm Payment Collection
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Please review the payment details before confirming the transaction.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-sm leading-relaxed text-foreground">
+            <p>
+              You are recording a payment of{' '}
+              <span className="font-bold text-emerald-600">
+                ₹{Number(payAmount || 0).toLocaleString('en-IN')}
+              </span>{' '}
+              for <span className="font-semibold text-primary">{student.name}</span>{' '}
+              <span className="text-muted-foreground">({student.reg_no})</span> via{' '}
+              <span className="font-semibold uppercase">{payMethod}</span>.
+            </p>
+
+            <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-1.5 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Current Outstanding Due:</span>
+                <span className="font-semibold text-amber-600">
+                  ₹{Number(balance).toLocaleString('en-IN')}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Amount Being Paid:</span>
+                <span className="font-bold text-emerald-600">
+                  - ₹{Number(payAmount || 0).toLocaleString('en-IN')}
+                </span>
+              </div>
+              <div className="pt-1.5 border-t border-border flex justify-between items-center font-medium">
+                <span className="text-foreground">Remaining Balance After Payment:</span>
+                <span className={`font-bold ${Math.max(0, balance - Number(payAmount || 0)) === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  ₹{Math.max(0, balance - Number(payAmount || 0)).toLocaleString('en-IN')}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Are you sure you want to proceed and record this payment into the student's transaction history?
+            </p>
+          </div>
+
+          <DialogFooter className="flex-row items-center justify-end gap-2 sm:justify-end pt-2 border-t border-border/60">
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={() => setConfirmPayOpen(false)}
+              className="h-9 px-4"
+            >
+              No, Cancel
+            </Button>
+            <Button
+              size="sm"
+              type="button"
+              onClick={confirmAndRecordPayment}
+              disabled={submittingPayment}
+              className="h-9 px-5 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-xs cursor-pointer"
+            >
+              {submittingPayment ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Recording...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={14} />
+                  Yes, Confirm Payment
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- Edit Student Details Modal --- */}
+      <Dialog open={editStudentModalOpen} onOpenChange={setEditStudentModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+              <User className="text-primary size-5" />
+              Edit Student Details ({student.reg_no})
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Update personal and contact information for {student.name}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleUpdateStudent} className="space-y-4 py-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-student-name" className="text-xs font-medium text-foreground">
+                  Student Name *
+                </Label>
+                <Input
+                  id="edit-student-name"
+                  required
+                  value={editStudentForm.name}
+                  onChange={(e) =>
+                    setEditStudentForm((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                  className="h-9 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-student-fname" className="text-xs font-medium text-foreground">
+                  Father's Name *
+                </Label>
+                <Input
+                  id="edit-student-fname"
+                  required
+                  value={editStudentForm.f_name}
+                  onChange={(e) =>
+                    setEditStudentForm((prev) => ({ ...prev, f_name: e.target.value }))
+                  }
+                  className="h-9 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-student-phone" className="text-xs font-medium text-foreground">
+                  Phone Number *
+                </Label>
+                <Input
+                  id="edit-student-phone"
+                  required
+                  value={editStudentForm.phone}
+                  onChange={(e) =>
+                    setEditStudentForm((prev) => ({ ...prev, phone: e.target.value }))
+                  }
+                  className="h-9 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-student-email" className="text-xs font-medium text-foreground">
+                  Email Address
+                </Label>
+                <Input
+                  id="edit-student-email"
+                  type="email"
+                  value={editStudentForm.email}
+                  onChange={(e) =>
+                    setEditStudentForm((prev) => ({ ...prev, email: e.target.value }))
+                  }
+                  className="h-9 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="edit-student-address" className="text-xs font-medium text-foreground">
+                  Address
+                </Label>
+                <Input
+                  id="edit-student-address"
+                  value={editStudentForm.address}
+                  onChange={(e) =>
+                    setEditStudentForm((prev) => ({ ...prev, address: e.target.value }))
+                  }
+                  className="h-9 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2 pt-1">
+                <Label className="text-xs font-medium text-foreground block">
+                  Student Status
+                </Label>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="edit-student-status"
+                    checked={editStudentForm.status}
+                    onCheckedChange={(checked) =>
+                      setEditStudentForm((prev) => ({ ...prev, status: Boolean(checked) }))
+                    }
+                  />
+                  <Label htmlFor="edit-student-status" className="text-xs cursor-pointer select-none">
+                    Active Student (Uncheck to mark as Inactive)
+                  </Label>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex-row items-center justify-end gap-2 sm:justify-end pt-3 border-t border-border/60">
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                disabled={savingStudent}
+                onClick={() => setEditStudentModalOpen(false)}
+                className="h-9 px-4"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                type="submit"
+                disabled={savingStudent}
+                className="h-9 px-4 gap-1.5 bg-primary hover:bg-[#1f6feb] text-primary-foreground font-medium shadow-xs cursor-pointer"
+              >
+                {savingStudent ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- Edit Payment Transaction Modal --- */}
+      <Dialog open={editPaymentModalOpen} onOpenChange={setEditPaymentModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+              <CreditCard className="text-primary size-5" />
+              Edit Payment Transaction #{paymentToEdit?.id}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Correct the recorded amount or payment method. The student balance will automatically update.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleUpdatePayment} className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-amount-paid" className="text-xs font-medium text-foreground">
+                Amount Paid (₹) *
+              </Label>
+              <Input
+                id="edit-amount-paid"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                value={editPaymentForm.amount_paid}
+                onChange={(e) =>
+                  setEditPaymentForm((prev) => ({ ...prev, amount_paid: e.target.value }))
+                }
+                className="h-9 text-sm"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Enter the corrected amount received for this receipt/transaction.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-foreground">
+                Payment Method
+              </Label>
+              <RadioGroup
+                value={editPaymentForm.payment_method}
+                onValueChange={(val) =>
+                  setEditPaymentForm((prev) => ({ ...prev, payment_method: val }))
+                }
+                className="flex items-center gap-4 pt-1"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="upi" id="edit-pay-upi" />
+                  <Label htmlFor="edit-pay-upi" className="text-xs cursor-pointer">
+                    UPI
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="card" id="edit-pay-card" />
+                  <Label htmlFor="edit-pay-card" className="text-xs cursor-pointer">
+                    Card
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="cash" id="edit-pay-cash" />
+                  <Label htmlFor="edit-pay-cash" className="text-xs cursor-pointer">
+                    Cash
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            <DialogFooter className="flex-row items-center justify-end gap-2 sm:justify-end pt-3 border-t border-border/60">
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                disabled={savingPayment}
+                onClick={() => setEditPaymentModalOpen(false)}
+                className="h-9 px-4"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                type="submit"
+                disabled={savingPayment}
+                className="h-9 px-4 gap-1.5 bg-primary hover:bg-[#1f6feb] text-primary-foreground font-medium shadow-xs cursor-pointer"
+              >
+                {savingPayment ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* --- Generate Receipt Modal --- */}
       <Dialog open={receiptModalOpen} onOpenChange={setReceiptModalOpen}>

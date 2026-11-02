@@ -167,7 +167,92 @@ const getAllPayments = async (req, res) => {
   }
 };
 
+const editPaymentHistory = async (req, res) => {
+  const { id } = req.params;
+  const { amount_paid, payment_method } = req.body;
+
+  const newAmount = Number(amount_paid);
+
+  try {
+    if (isNaN(newAmount) || newAmount < 0) {
+      return res.status(400).json({
+        message: "Please enter a valid payment amount (must be 0 or greater)",
+      });
+    }
+
+    const history = await prisma.paymentHistory.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        payment: {
+          include: {
+            history: true,
+          },
+        },
+      },
+    });
+
+    if (!history) {
+      return res.status(404).json({
+        message: "Payment transaction record not found",
+      });
+    }
+
+    // Check if new total paid would exceed finalFee
+    const otherHistoriesPaid = history.payment.history
+      .filter((h) => h.id !== history.id)
+      .reduce((sum, h) => sum + Number(h.amountPaid), 0);
+
+    const projectedTotalPaid = otherHistoriesPaid + newAmount;
+    const finalFee = Number(history.payment.finalFee);
+
+    if (projectedTotalPaid > finalFee) {
+      return res.status(400).json({
+        message: `Total payment cannot exceed final fee of ₹${finalFee.toLocaleString("en-IN")}. Maximum allowed for this entry is ₹${Math.max(0, finalFee - otherHistoriesPaid).toLocaleString("en-IN")}`,
+      });
+    }
+
+    let updatedHistory = null;
+    let updatedPayment = null;
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Update Payment History
+      updatedHistory = await tx.paymentHistory.update({
+        where: { id: parseInt(id) },
+        data: {
+          amountPaid: newAmount,
+          ...(payment_method && { paymentMethod: payment_method.trim() }),
+        },
+      });
+
+      // 2. Recalculate Payment totals
+      const newBalance = Math.max(0, finalFee - projectedTotalPaid);
+
+      updatedPayment = await tx.payment.update({
+        where: { id: history.paymentId },
+        data: {
+          totalPaid: projectedTotalPaid,
+          balance: newBalance,
+        },
+      });
+    });
+
+    return res.status(200).json({
+      message: "Payment transaction updated successfully",
+      data: {
+        history: updatedHistory,
+        payment: updatedPayment,
+      },
+    });
+  } catch (error) {
+    console.error("Error in editPaymentHistory:", error);
+    return res.status(500).json({
+      message: "Error while updating payment transaction",
+    });
+  }
+};
+
 module.exports = {
   addPayment,
   getAllPayments,
+  editPaymentHistory,
 };

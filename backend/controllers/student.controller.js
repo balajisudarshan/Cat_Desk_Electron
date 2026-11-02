@@ -113,12 +113,53 @@ const updateStudentStatus = async (req, res) => {
   }
 };
 
+const updateStudent = async (req, res) => {
+  const { id } = req.params;
+  const { name, phone, f_name, address, email, status } = req.body;
+
+  try {
+    const isNum = !isNaN(Number(id));
+    const student = await prisma.student.update({
+      where: isNum ? { id: parseInt(id) } : { regNo: id },
+      data: {
+        ...(name !== undefined && { name: name.trim() }),
+        ...(phone !== undefined && { phone: phone.trim() }),
+        ...(f_name !== undefined && { fName: f_name.trim() }),
+        ...(address !== undefined && { address: address ? address.trim() : null }),
+        ...(email !== undefined && { email: email ? email.trim() : null }),
+        ...(status !== undefined && { status: Boolean(status) }),
+      },
+    });
+
+    return res.status(200).json({
+      message: "Student details updated successfully",
+      data: {
+        id: student.id,
+        name: student.name,
+        phone: student.phone,
+        f_name: student.fName,
+        address: student.address,
+        status: student.status,
+        email: student.email,
+        reg_no: student.regNo,
+      },
+    });
+  } catch (err) {
+    console.error("Error in updateStudent:", err);
+    if (err.code === "P2025") {
+      return res.status(404).json({ message: "Student not found" });
+    }
+    return res.status(500).json({ message: "Error while updating student details" });
+  }
+};
+
 const deleteStudent = async (req, res) => {
   const { id } = req.params;
 
   try {
+    const isNum = !isNaN(Number(id));
     const student = await prisma.student.delete({
-      where: { id: parseInt(id) },
+      where: isNum ? { id: parseInt(id) } : { regNo: id },
     });
 
     return res.status(200).json({
@@ -216,6 +257,7 @@ module.exports = {
   addStudent,
   getAllStudents,
   updateStudentStatus,
+  updateStudent,
   deleteStudent,
   getStudent,
   getStudentByRegNo,

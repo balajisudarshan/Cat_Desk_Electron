@@ -33,24 +33,24 @@ const getFullHistory = async (req, res) => {
       course_name: e.course.name,
       batch_name: e.batch?.batchName || null,
       timings: e.timings || (e.batch ? `${e.batch.startTime} - ${e.batch.endTime}` : "N/A"),
-      course_fee: e.courseFee,
+      course_fee: Number(e.courseFee),
     }));
 
     const payments = student.payments.map((p) => ({
       id: p.id,
-      total_fee: p.totalFee,
-      discount: p.discount,
-      final_fee: p.finalFee,
+      total_fee: Number(p.totalFee),
+      discount: Number(p.discount),
+      final_fee: Number(p.finalFee),
       payment_mode: p.paymentMode,
-      total_paid: p.totalPaid,
-      balance: p.balance,
+      total_paid: Number(p.totalPaid),
+      balance: Number(p.balance),
     }));
 
     const paymentHistory = student.payments.flatMap((p) =>
       p.history.map((h) => ({
         id: h.id,
         payment_id: h.paymentId,
-        amount_paid: h.amountPaid,
+        amount_paid: Number(h.amountPaid),
         payment_method: h.paymentMethod,
         payment_date: h.paymentDate,
       }))
